@@ -1,0 +1,91 @@
+---
+title: "Bitcoin / Gold Explorer — Reproducible Analysis"
+author: "Sasa Wu"
+output:
+  html_document:
+    toc: true
+params:
+  csv: "examples/prices.csv"
+  rolling_window: 90
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir=normalizePath('..'))
+knitr::opts_chunk$set(echo=TRUE,warning=TRUE,message=FALSE,fig.width=10,fig.height=5)
+```
+
+```{r import}
+source('R/core.R')
+input <- read.csv(params$csv,check.names=FALSE,stringsAsFactors=FALSE,na.strings=c('','NA'))
+clean <- clean_prices(input)
+analysis <- analyse_prices(clean$rows,as.integer(params$rolling_window))
+tail_analysis <- analyse_stress(analysis$returns)
+p <- clean$rows
+```
+
+## Data and provenance
+
+Loaded file: **`r params$csv`**. Retained **`r nrow(p)`** common price observations from **`r p$date[1]`** to **`r tail(p$date,1)`**. Dropped **`r clean$quality$droppedRows`** incomplete dates.
+
+The bundled `examples/prices.csv` is a small **synthetic calculation fixture**, not market history. For historical analysis, run `R/refresh_data.R` first and set `csv` to `analysis-output/prices.csv`. Check the accompanying metadata for the source and actual coverage.
+
+No forward-fill, interpolation, winsorisation or annualisation is applied. Date alignment alone does not synchronise market closes. Gold futures are not physical gold; DXY is not an investment portfolio.
+
+## Computed statistics
+
+```{r stats}
+statistics <- do.call(rbind,lapply(assets,function(k) data.frame(
+  Asset=k,TotalChange=analysis$stats[[k]]$totalReturn,
+  IntervalVolatility=analysis$stats[[k]]$intervalVolatility,
+  MaxDrawdown=analysis$stats[[k]]$maxDrawdown)))
+knitr::kable(statistics,digits=5)
+```
+
+Volatility is the sample standard deviation of log returns between consecutive common observations. It is not annualised or labelled as a fixed 24-hour return.
+
+## Normalised price performance
+
+```{r performance}
+normalised <- as.matrix(p[assets])
+normalised <- sweep(normalised,2,normalised[1,],'/')*100
+matplot(as.Date(p$date),normalised,type='l',lty=1,log='y',col=c('#c4784b','#b6a06b','#6a87a7'),xlab='Date',ylab='Price index, base 100',main='Normalised price observations')
+legend('topleft',legend=assets,col=c('#c4784b','#b6a06b','#6a87a7'),lty=1,bty='n')
+```
+
+## Log-return correlation
+
+```{r correlation}
+correlations <- do.call(rbind,lapply(analysis$matrix,unlist))
+knitr::kable(correlations,digits=4)
+```
+
+Undefined correlations remain missing when a series has zero variance. No fixed result or hedge label is printed.
+
+## Trailing Bitcoin / Gold correlation
+
+```{r rolling}
+r <- analysis$rolling
+if(nrow(r)>0 && any(is.finite(r$bitcoin_gold))) {
+  plot(as.Date(r$date),r$bitcoin_gold,type='l',ylim=c(-1,1),col='#c4784b',xlab='Window ending',ylab='Pearson correlation',main=paste(params$rolling_window,'common-observation window'))
+  abline(h=0,lty=2,col='grey')
+} else cat('Insufficient observations or zero variance for a defined rolling estimate.')
+```
+
+## Conditional dollar-tail analysis
+
+The upper-decile DXY-return cutoff is **`r signif(tail_analysis$threshold,5)`**, with **`r tail_analysis$n`** strictly positive DXY-return intervals selected. This cutoff is estimated in-sample.
+
+```{r stress}
+knitr::kable(do.call(rbind,lapply(assets,function(k) data.frame(
+  Asset=k,MeanAll=tail_analysis$baseline[[k]]$meanLogReturn,
+  MeanTail=tail_analysis$conditional[[k]]$meanLogReturn,
+  NegativeShareTail=tail_analysis$conditional[[k]]$negativeShare))),digits=5)
+```
+
+This descriptive subset is not a causal estimate or a safe-haven classification. DCC-GARCH, Markov-switching, ETF-flow analysis and predictive models remain outside this implementation.
+
+## Environment
+
+```{r environment}
+sessionInfo()
+```

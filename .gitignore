@@ -1,0 +1,7 @@
+.DS_Store
+.Rhistory
+.RData
+.Rproj.user/
+analysis-output/
+R/analysis.html
+R/analysis_files/

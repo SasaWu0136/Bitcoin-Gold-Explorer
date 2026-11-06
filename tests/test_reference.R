@@ -1,0 +1,10 @@
+source('R/core.R')
+p <- clean_prices(read.csv('examples/prices.csv'))$rows
+a <- analyse_prices(p,3)
+stopifnot(abs(a$stats$bitcoin$totalReturn-.18)<1e-10,abs(a$stats$bitcoin$maxDrawdown+.1)<1e-10)
+stopifnot(nrow(a$returns)==7,nrow(a$rolling)==5,a$maxGap==3)
+stopifnot(is.na(safe_cor(c(1,1),c(2,3))))
+x <- p; x$gold[2] <- NA; stopifnot(clean_prices(x)$quality$droppedRows==1)
+bad <- p; bad$date[2] <- bad$date[1]; stopifnot(inherits(try(clean_prices(bad),silent=TRUE),'try-error'))
+s <- analyse_stress(a$returns,.2);stopifnot(all(s$selected$dxy>0),all(s$selected$dxy>=s$threshold))
+cat('PASS: R reference calculations, date validation, alignment and conditional selection.\n')
